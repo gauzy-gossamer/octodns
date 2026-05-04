@@ -9,7 +9,12 @@ from helpers import SimpleProvider
 from octodns.record.base import Record
 from octodns.record.exception import ValidationError
 from octodns.record.rr import RrParseError
-from octodns.record.sshfp import SshfpRecord, SshfpValue, SshfpValueRfcValidator
+from octodns.record.sshfp import (
+    SshfpRecord,
+    SshfpValue,
+    SshfpValueBestPracticeValidator,
+    SshfpValueRfcValidator,
+)
 from octodns.zone import Zone
 
 
@@ -663,6 +668,152 @@ class TestRecordSshfp(TestCase):
         )
         self.assertFalse(upper.changes(lower, target))
         self.assertFalse(lower.changes(upper, target))
+
+
+class TestSshfpBestPractice(TestCase):
+
+    def test_best_practice_validator(self):
+        validate = SshfpValueBestPracticeValidator(
+            'sshfp-value-best-practice'
+        ).validate
+
+        sha1_fp = 'bf6b6825d2977c511a475bbefb88aad54a92ac73'
+        sha256_fp = (
+            'a87f1b687ac0e57d2a081a2f282672334d90ed316d2b818ca9580ea384d92401'
+        )
+
+        # SHA-256 fingerprint_type passes
+        self.assertEqual(
+            [],
+            validate(
+                SshfpValue,
+                [
+                    {
+                        'algorithm': 1,
+                        'fingerprint_type': 2,
+                        'fingerprint': sha256_fp,
+                    }
+                ],
+                'SSHFP',
+            ),
+        )
+        # unknown fingerprint_type passes (not our concern)
+        self.assertEqual(
+            [],
+            validate(
+                SshfpValue,
+                [
+                    {
+                        'algorithm': 4,
+                        'fingerprint_type': 3,
+                        'fingerprint': sha1_fp,
+                    }
+                ],
+                'SSHFP',
+            ),
+        )
+        # missing fingerprint_type — no error (format validator handles it)
+        self.assertEqual(
+            [],
+            validate(
+                SshfpValue, [{'algorithm': 1, 'fingerprint': sha1_fp}], 'SSHFP'
+            ),
+        )
+        # SHA-1 fingerprint_type triggers warning
+        self.assertEqual(
+            [
+                'SSHFP fingerprint_type 1 (SHA-1) is deprecated; '
+                'use fingerprint_type 2 (SHA-256)'
+            ],
+            validate(
+                SshfpValue,
+                [
+                    {
+                        'algorithm': 1,
+                        'fingerprint_type': 1,
+                        'fingerprint': sha1_fp,
+                    }
+                ],
+                'SSHFP',
+            ),
+        )
+        # multiple values — each SHA-1 value reported
+        self.assertEqual(
+            [
+                'SSHFP fingerprint_type 1 (SHA-1) is deprecated; '
+                'use fingerprint_type 2 (SHA-256)',
+                'SSHFP fingerprint_type 1 (SHA-1) is deprecated; '
+                'use fingerprint_type 2 (SHA-256)',
+            ],
+            validate(
+                SshfpValue,
+                [
+                    {
+                        'algorithm': 1,
+                        'fingerprint_type': 1,
+                        'fingerprint': sha1_fp,
+                    },
+                    {
+                        'algorithm': 2,
+                        'fingerprint_type': 1,
+                        'fingerprint': sha1_fp,
+                    },
+                ],
+                'SSHFP',
+            ),
+        )
+
+        # opt-in via Record.enable_validator
+        zone = Zone('unit.tests.', [])
+        Record.enable_validators(['legacy'])
+        Record.enable_validator('sshfp-value-best-practice', types=['SSHFP'])
+        try:
+            with self.assertRaises(ValidationError) as ctx:
+                Record.new(
+                    zone,
+                    '',
+                    {
+                        'type': 'SSHFP',
+                        'ttl': 600,
+                        'value': {
+                            'algorithm': 1,
+                            'fingerprint_type': 1,
+                            'fingerprint': sha1_fp,
+                        },
+                    },
+                )
+            self.assertEqual(
+                [
+                    'SSHFP fingerprint_type 1 (SHA-1) is deprecated; '
+                    'use fingerprint_type 2 (SHA-256)'
+                ],
+                ctx.exception.reasons,
+            )
+            # SHA-256 passes
+            Record.new(
+                zone,
+                '',
+                {
+                    'type': 'SSHFP',
+                    'ttl': 600,
+                    'value': {
+                        'algorithm': 1,
+                        'fingerprint_type': 2,
+                        'fingerprint': sha256_fp,
+                    },
+                },
+            )
+        finally:
+            Record.disable_validator(
+                'sshfp-value-best-practice', types=['SSHFP']
+            )
+
+    def test_best_practice_not_in_defaults(self):
+        registered = Record.registered_validators()
+        sshfp_value_ids = set(
+            v.id for v in registered['value'].get('SSHFP', [])
+        )
+        self.assertNotIn('sshfp-value-best-practice', sshfp_value_ids)
 
 
 class TestSshFpValue(TestCase):

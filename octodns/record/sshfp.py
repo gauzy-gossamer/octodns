@@ -124,6 +124,36 @@ class SshfpValueRfcValidator(ValueValidator):
         return reasons
 
 
+class SshfpValueBestPracticeValidator(ValueValidator):
+    '''
+    Checks that SSHFP records use SHA-256 (fingerprint_type 2) rather
+    than the deprecated SHA-1 (fingerprint_type 1).
+
+    SHA-1 is cryptographically weak; RFC 8709 formalises Ed25519 support
+    and operational guidance consistently recommends SHA-256 fingerprints.
+
+    Enabled as part of the ``best-practice`` validator set::
+
+      manager:
+        enabled:
+          - best-practice
+    '''
+
+    def validate(self, value_cls, data, _type):
+        reasons = []
+        for value in data:
+            try:
+                fp_type = int(value['fingerprint_type'])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if fp_type == 1:
+                reasons.append(
+                    'SSHFP fingerprint_type 1 (SHA-1) is deprecated; '
+                    'use fingerprint_type 2 (SHA-256)'
+                )
+        return reasons
+
+
 class SshfpValue(EqualityTupleMixin, dict):
     VALID_ALGORITHMS = (1, 2, 3, 4)
     VALID_FINGERPRINT_TYPES = (1, 2)
@@ -131,6 +161,9 @@ class SshfpValue(EqualityTupleMixin, dict):
     VALIDATORS = [
         SshfpValueValidator('sshfp-value', sets={'legacy'}),
         SshfpValueRfcValidator('sshfp-value-rfc', sets={'strict'}),
+        SshfpValueBestPracticeValidator(
+            'sshfp-value-best-practice', sets={'best-practice'}
+        ),
     ]
 
     @classmethod
