@@ -117,10 +117,45 @@ class TlsaValueRfcValidator(ValueValidator):
         return reasons
 
 
+class TlsaValueBestPracticeValidator(ValueValidator):
+    '''
+    Checks that TLSA records do not use matching_type 0 (full
+    DER-encoded certificate or public key stored verbatim).
+
+    RFC 7671 §4.1 advises against matching_type 0 in production:
+    any certificate renewal requires a DNS update before the new
+    certificate can be used.  Use matching_type 1 (SHA-256) or
+    2 (SHA-512) instead.
+
+    Enabled as part of the ``best-practice`` validator set::
+
+      manager:
+        enabled:
+          - best-practice
+    '''
+
+    def validate(self, value_cls, data, _type):
+        reasons = []
+        for value in data:
+            try:
+                matching_type = int(value['matching_type'])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if matching_type == 0:
+                reasons.append(
+                    'TLSA matching_type 0 (full data) is not recommended; '
+                    'use matching_type 1 (SHA-256) or 2 (SHA-512)'
+                )
+        return reasons
+
+
 class TlsaValue(EqualityTupleMixin, dict):
     VALIDATORS = [
         TlsaValueValidator('tlsa-value', sets={'legacy'}),
         TlsaValueRfcValidator('tlsa-value-rfc', sets={'strict'}),
+        TlsaValueBestPracticeValidator(
+            'tlsa-value-best-practice', sets={'best-practice'}
+        ),
     ]
 
     @classmethod

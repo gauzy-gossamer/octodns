@@ -9,7 +9,12 @@ from helpers import SimpleProvider
 from octodns.record import Record
 from octodns.record.exception import ValidationError
 from octodns.record.rr import RrParseError
-from octodns.record.tlsa import TlsaRecord, TlsaValue, TlsaValueRfcValidator
+from octodns.record.tlsa import (
+    TlsaRecord,
+    TlsaValue,
+    TlsaValueBestPracticeValidator,
+    TlsaValueRfcValidator,
+)
 from octodns.zone import Zone
 
 
@@ -708,6 +713,160 @@ class TestRecordTlsa(TestCase):
             )
         finally:
             Record.disable_validator('tlsa-value-rfc', types=['TLSA'])
+
+
+class TestTlsaBestPractice(TestCase):
+
+    def test_best_practice_validator(self):
+        validate = TlsaValueBestPracticeValidator(
+            'tlsa-value-best-practice'
+        ).validate
+
+        cad = 'a' * 64
+
+        # matching_type 1 (SHA-256) passes
+        self.assertEqual(
+            [],
+            validate(
+                TlsaValue,
+                [
+                    {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'matching_type': 1,
+                        'certificate_association_data': cad,
+                    }
+                ],
+                'TLSA',
+            ),
+        )
+        # matching_type 2 (SHA-512) passes
+        self.assertEqual(
+            [],
+            validate(
+                TlsaValue,
+                [
+                    {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'matching_type': 2,
+                        'certificate_association_data': cad,
+                    }
+                ],
+                'TLSA',
+            ),
+        )
+        # missing matching_type — no error (format validator handles it)
+        self.assertEqual(
+            [],
+            validate(
+                TlsaValue,
+                [
+                    {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'certificate_association_data': cad,
+                    }
+                ],
+                'TLSA',
+            ),
+        )
+        # matching_type 0 (full data) triggers warning
+        self.assertEqual(
+            [
+                'TLSA matching_type 0 (full data) is not recommended; '
+                'use matching_type 1 (SHA-256) or 2 (SHA-512)'
+            ],
+            validate(
+                TlsaValue,
+                [
+                    {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'matching_type': 0,
+                        'certificate_association_data': cad,
+                    }
+                ],
+                'TLSA',
+            ),
+        )
+        # multiple values — each matching_type 0 is reported
+        self.assertEqual(
+            [
+                'TLSA matching_type 0 (full data) is not recommended; '
+                'use matching_type 1 (SHA-256) or 2 (SHA-512)',
+                'TLSA matching_type 0 (full data) is not recommended; '
+                'use matching_type 1 (SHA-256) or 2 (SHA-512)',
+            ],
+            validate(
+                TlsaValue,
+                [
+                    {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'matching_type': 0,
+                        'certificate_association_data': cad,
+                    },
+                    {
+                        'certificate_usage': 1,
+                        'selector': 0,
+                        'matching_type': 0,
+                        'certificate_association_data': cad,
+                    },
+                ],
+                'TLSA',
+            ),
+        )
+
+        # opt-in via Record.enable_validator
+        zone = Zone('unit.tests.', [])
+        Record.enable_validators(['legacy'])
+        Record.enable_validator('tlsa-value-best-practice', types=['TLSA'])
+        try:
+            with self.assertRaises(ValidationError) as ctx:
+                Record.new(
+                    zone,
+                    '_443._tcp',
+                    {
+                        'type': 'TLSA',
+                        'ttl': 600,
+                        'value': {
+                            'certificate_usage': 3,
+                            'selector': 1,
+                            'matching_type': 0,
+                            'certificate_association_data': cad,
+                        },
+                    },
+                )
+            self.assertEqual(
+                [
+                    'TLSA matching_type 0 (full data) is not recommended; '
+                    'use matching_type 1 (SHA-256) or 2 (SHA-512)'
+                ],
+                ctx.exception.reasons,
+            )
+            # matching_type 1 passes
+            Record.new(
+                zone,
+                '_443._tcp',
+                {
+                    'type': 'TLSA',
+                    'ttl': 600,
+                    'value': {
+                        'certificate_usage': 3,
+                        'selector': 1,
+                        'matching_type': 1,
+                        'certificate_association_data': cad,
+                    },
+                },
+            )
+        finally:
+            Record.disable_validator('tlsa-value-best-practice', types=['TLSA'])
+
+    def test_best_practice_not_in_defaults(self):
+        registered = Record.registered_validators()
+        tlsa_value_ids = set(v.id for v in registered['value'].get('TLSA', []))
+        self.assertNotIn('tlsa-value-best-practice', tlsa_value_ids)
 
 
 class TestTlsaValue(TestCase):
