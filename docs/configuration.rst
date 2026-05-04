@@ -225,6 +225,10 @@ Validators active in both ``legacy`` and ``strict``:
 +------------------------+------------------------------------------+
 | ``openpgpkey-value-rfc``| OPENPGPKEY rdata format (RFC 7929)      |
 +------------------------+------------------------------------------+
+| ``dynamic``            | Dynamic routing config (pools and rules) |
++------------------------+------------------------------------------+
+| ``urlfwd-value``       | URLFWD rdata format                      |
++------------------------+------------------------------------------+
 
 Validators active in ``legacy`` only (will be superseded in ``strict``):
 
@@ -232,8 +236,6 @@ Validators active in ``legacy`` only (will be superseded in ``strict``):
 | id                   | description                              |
 +======================+==========================================+
 | ``geo``              | Geo routing config                       |
-+----------------------+------------------------------------------+
-| ``dynamic``          | Dynamic routing config                   |
 +----------------------+------------------------------------------+
 | ``srv-name``         | SRV name format                          |
 +----------------------+------------------------------------------+
@@ -254,8 +256,6 @@ Validators active in ``legacy`` only (will be superseded in ``strict``):
 | ``ds-value``         | DS rdata format                          |
 +----------------------+------------------------------------------+
 | ``tlsa-value``       | TLSA rdata format                        |
-+----------------------+------------------------------------------+
-| ``urlfwd-value``     | URLFWD rdata format                      |
 +----------------------+------------------------------------------+
 
 Validators active in ``strict`` only (stricter replacements):
