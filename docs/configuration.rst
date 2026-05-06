@@ -501,14 +501,20 @@ Available versions
 Read the Docs serves a copy of the schema under each version's ``_static``
 directory:
 
-- `Bundled with this documentation <_static/octodns.schema.json>`_ — always
+- `Bundled with this documentation <_static/octodns-zone.schema.json>`_ — always
   matches the version of octoDNS whose docs you are viewing
-- `Latest release <https://octodns.readthedocs.io/en/stable/_static/octodns.schema.json>`_
+- `Latest release <https://octodns.readthedocs.io/en/stable/_static/octodns-zone.schema.json>`_
   — recommended for most users; tracks the most recent release
-- `Development <https://octodns.readthedocs.io/en/latest/_static/octodns.schema.json>`_
+- `Development <https://octodns.readthedocs.io/en/latest/_static/octodns-zone.schema.json>`_
   — tracks ``main``
 - A specific release, e.g.
-  `v2.0.0 <https://octodns.readthedocs.io/en/v2.0.0/_static/octodns.schema.json>`_
+  `v2.0.0 <https://octodns.readthedocs.io/en/v2.0.0/_static/octodns-zone.schema.json>`_
+
+.. note::
+
+   The legacy filename ``octodns.schema.json`` is still published alongside
+   ``octodns-zone.schema.json`` with identical content. Existing modelines or
+   ``yaml.schemas`` configs pointing at the old name keep working.
 
 Opting in with a modeline
 .........................
@@ -518,7 +524,7 @@ other editors) honors a modeline at the top of a YAML file:
 
 .. code-block:: yaml
 
-   # yaml-language-server: $schema=https://octodns.readthedocs.io/en/stable/_static/octodns.schema.json
+   # yaml-language-server: $schema=https://octodns.readthedocs.io/en/stable/_static/octodns-zone.schema.json
    ---
    www:
      type: A
@@ -532,7 +538,7 @@ In VS Code (or any editor that uses ``yaml-language-server``) you can instead
 associate the schema with a file pattern via ``yaml.schemas``::
 
   "yaml.schemas": {
-    "https://octodns.readthedocs.io/en/stable/_static/octodns.schema.json": [
+    "https://octodns.readthedocs.io/en/stable/_static/octodns-zone.schema.json": [
       "zones/*.yaml"
     ]
   }
@@ -544,6 +550,52 @@ The ``octodns-schema`` CLI prints or writes the same schema:
 
 .. code-block:: sh
 
-   octodns-schema --output octodns.schema.json
+   octodns-schema --output octodns-zone.schema.json
+
+JSON Schema for the main config file
+-------------------------------------
+
+octoDNS also publishes a JSON Schema describing the main ``config.yaml``
+format: providers, processors, validators, secret_handlers, and zones. Built-in
+core classes (``YamlProvider``, ``OwnershipProcessor``, etc.) get full property
+schemas; third-party plugin classes are accepted with any kwargs as long as
+``class`` is present.
+
+Available versions
+..................
+
+- `Bundled with this documentation <_static/octodns-config.schema.json>`_
+- `Latest release <https://octodns.readthedocs.io/en/stable/_static/octodns-config.schema.json>`_
+- `Development <https://octodns.readthedocs.io/en/latest/_static/octodns-config.schema.json>`_
+
+Opting in with a modeline
+.........................
+
+.. code-block:: yaml
+
+   # yaml-language-server: $schema=https://octodns.readthedocs.io/en/stable/_static/octodns-config.schema.json
+   ---
+   providers:
+     config:
+       class: octodns.provider.yaml.YamlProvider
+       directory: ./zones
+
+Editor configuration
+....................
+
+::
+
+  "yaml.schemas": {
+    "https://octodns.readthedocs.io/en/stable/_static/octodns-config.schema.json": [
+      "config.yaml"
+    ]
+  }
+
+Generating locally
+..................
+
+.. code-block:: sh
+
+   octodns-schema --kind config --output octodns-config.schema.json
 
 .. _yaml-language-server: https://github.com/redhat-developer/yaml-language-server
