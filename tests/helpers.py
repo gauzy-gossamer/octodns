@@ -13,6 +13,24 @@ from octodns.provider.yaml import YamlProvider
 from octodns.record import Record
 from octodns.record.validator import RecordValidator, ValueValidator
 from octodns.secret.base import BaseSecrets
+from octodns.zone import Zone
+from octodns.zone.validator import ZoneValidator
+
+
+@contextmanager
+def zone_validators_snapshot():
+    reg = Zone.validators
+    configured_snap = reg.configured
+    active_snap = dict(reg.active)
+    avail_snap = dict(reg.available)
+    try:
+        yield
+    finally:
+        reg.configured = configured_snap
+        reg.active.clear()
+        reg.active.update(active_snap)
+        reg.available.clear()
+        reg.available.update(avail_snap)
 
 
 @contextmanager
@@ -182,6 +200,24 @@ class TestValueValidator(ValueValidator):
 
 
 class NotAValidator:
+    def __init__(self, id):
+        self.id = id
+
+
+class TestZoneValidator(ZoneValidator):
+    def __init__(self, id, require_mx=False, **kwargs):
+        super().__init__(id, **kwargs)
+        self.require_mx = require_mx
+
+    def validate(self, zone):
+        if self.require_mx:
+            mx_records = zone.get('', type='MX')
+            if not mx_records:
+                return ['zone apex is missing an MX record']
+        return []
+
+
+class NotAZoneValidator:
     def __init__(self, id):
         self.id = id
 

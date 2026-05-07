@@ -71,9 +71,17 @@ class TestConfigSchema(TestCase):
                     'auto_arpa': True,
                     'processors': ['p1'],
                     'post_processors': ['p2'],
-                    'enabled': ['legacy'],
-                    'validators': {'A': ['v1'], '*': ['v2']},
-                    'disable_validators': {'AAAA': ['bad-v']},
+                    'validators': {
+                        'enabled': ['legacy'],
+                        'record': {
+                            'validators': {'A': ['v1'], '*': ['v2']},
+                            'disable_validators': {'AAAA': ['bad-v']},
+                        },
+                        'zone': {
+                            'validators': ['my-zone-v'],
+                            'disable_validators': ['other-zone-v'],
+                        },
+                    },
                     'plan_outputs': {
                         'logs': {
                             'class': 'octodns.provider.plan.PlanLogger',

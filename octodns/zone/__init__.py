@@ -6,9 +6,11 @@ import re
 from collections import defaultdict
 from logging import getLogger
 
-from .deprecation import deprecated
-from .idna import idna_decode, idna_encode
-from .record import Create, Delete
+from ..deprecation import deprecated
+from ..idna import idna_decode, idna_encode
+from ..record import Create, Delete
+from .exception import ValidationError
+from .validator import zone_validators
 
 
 class SubzoneRecordException(Exception):
@@ -143,6 +145,7 @@ class Zone(object):
     '''
 
     log = getLogger('Zone')
+    validators = zone_validators
 
     REFERENCES = (
         'https://datatracker.ietf.org/doc/html/rfc1034',
@@ -261,6 +264,59 @@ class Zone(object):
         if self._origin:
             return self._origin.root_ns
         return self._root_ns
+
+    @classmethod
+    def register_zone_validator(cls, validator):
+        cls.validators.register(validator)
+
+    @classmethod
+    def enable_zone_validators(cls, sets):
+        cls.validators.enable_sets(sets)
+
+    @classmethod
+    def enable_zone_validator(cls, id):
+        cls.validators.enable(id)
+
+    @classmethod
+    def disable_zone_validator(cls, validator_id):
+        return cls.validators.disable(validator_id)
+
+    @classmethod
+    def registered_zone_validators(cls):
+        return cls.validators.registered()
+
+    @classmethod
+    def available_zone_validators(cls):
+        return cls.validators.available_validators()
+
+    def validate(self, lenient=False):
+        reasons = self.validators.process_zone(self)
+        if reasons:
+            if lenient:
+                self.log.warning(
+                    ValidationError.build_message(self.decoded_name, reasons)
+                )
+            else:
+                raise ValidationError(self.decoded_name, reasons)
+
+    def get(self, name, type=None):
+        '''
+        Return records at the given name, optionally filtered by type.
+
+        :param name: Record name relative to the zone (``''`` for the apex).
+        :type name: str
+        :param type: DNS record type to filter on (e.g. ``'MX'``), or ``None``
+                     to return all types at that name.
+        :type type: str or None
+        :return: Set of matching records; empty set when none are found.
+        :rtype: set[octodns.record.base.Record]
+        '''
+        if self._origin:
+            return self._origin.get(name, type=type)
+        records = self._records.get(name, ())
+        if type is None:
+            return set(records)
+        return {r for r in records if r._type == type}
 
     def hostname_from_fqdn(self, fqdn):
         '''

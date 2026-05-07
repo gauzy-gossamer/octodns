@@ -2,6 +2,6 @@ manager:
   validators:
     enabled:
       - legacy
-      - test-set
+      - best-practice
 providers: {}
 zones: {}

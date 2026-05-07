@@ -1,0 +1,5 @@
+validators:
+  multi-value-mx:
+    class: helpers.TestZoneValidator
+providers: {}
+zones: {}

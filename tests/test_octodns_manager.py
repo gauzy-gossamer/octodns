@@ -2,6 +2,7 @@
 #
 #
 
+import warnings
 from os import environ, listdir, remove
 from os.path import dirname, isfile, join
 from unittest import TestCase
@@ -16,6 +17,7 @@ from helpers import (
     SimpleProvider,
     TemporaryDirectory,
     validators_snapshot,
+    zone_validators_snapshot,
 )
 
 from octodns import __version__
@@ -34,6 +36,7 @@ from octodns.record.validator import RecordValidator
 from octodns.secret.environ import EnvironSecretsException
 from octodns.yaml import safe_load
 from octodns.zone import Zone
+from octodns.zone.exception import ValidationError
 
 config_dir = join(dirname(__file__), 'config')
 
@@ -148,7 +151,8 @@ class TestManager(TestCase):
         with self.assertRaises(ManagerException) as ctx:
             Manager(get_config_filename('validators-wrong-base.yaml'))
         self.assertIn(
-            'must extend RecordValidator or ValueValidator', str(ctx.exception)
+            'must extend RecordValidator, ValueValidator, or ZoneValidator',
+            str(ctx.exception),
         )
 
     def test_validators_bad_config(self):
@@ -346,6 +350,309 @@ class TestManager(TestCase):
                     for msg in logs.output
                 )
             )
+
+    # ── Zone validator manager wiring tests ──────────────────────────────────
+
+    def test_zone_validators_missing_class(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename('zone-validators-missing-class.yaml')
+                )
+            self.assertIn('missing class', str(ctx.exception))
+
+    def test_zone_validators_wrong_base(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(get_config_filename('zone-validators-wrong-base.yaml'))
+            self.assertIn(
+                'must extend RecordValidator, ValueValidator, or ZoneValidator',
+                str(ctx.exception),
+            )
+
+    def test_zone_validators_bad_config(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(get_config_filename('zone-validators-bad-config.yaml'))
+            self.assertIn('Incorrect validator config', str(ctx.exception))
+
+    def test_zone_validators_id_collision(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename('zone-validators-id-collision.yaml')
+                )
+            self.assertIn('already registered', str(ctx.exception))
+
+    def test_zone_validators_add(self):
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-add.yaml'))
+            ids = [v.id for v in Zone.available_zone_validators()]
+            self.assertIn('my-test-zone-validator', ids)
+
+    def test_zone_validators_add_with_kwargs(self):
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-add-with-kwargs.yaml'))
+            active = Zone.registered_zone_validators()
+            v = next(
+                (v for v in active if v.id == 'my-test-zone-validator'), None
+            )
+            self.assertIsNotNone(v)
+            self.assertTrue(v.require_mx)
+
+    def test_zone_validators_enable(self):
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-enable.yaml'))
+            active_ids = [v.id for v in Zone.registered_zone_validators()]
+            self.assertIn('my-test-zone-validator', active_ids)
+
+    def test_zone_validators_unknown_name(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename('zone-validators-unknown-name.yaml')
+                )
+            self.assertIn('Unknown zone validator', str(ctx.exception))
+
+    def test_zone_validators_disable(self):
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-enabled-sets.yaml'))
+            active_ids = [v.id for v in Zone.registered_zone_validators()]
+            self.assertIn('multi-value-mx', active_ids)
+
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-disable.yaml'))
+            active_ids = [v.id for v in Zone.registered_zone_validators()]
+            self.assertNotIn('multi-value-mx', active_ids)
+
+    def test_zone_validators_disable_unknown(self):
+        with zone_validators_snapshot():
+            with self.assertLogs('Manager', level='WARNING') as logs:
+                Manager(
+                    get_config_filename('zone-validators-disable-unknown.yaml')
+                )
+            self.assertTrue(
+                any(
+                    'this-id-does-not-exist' in msg
+                    and 'no zone validator' in msg
+                    for msg in logs.output
+                )
+            )
+
+    def test_zone_validators_enabled_sets(self):
+        with zone_validators_snapshot():
+            Manager(get_config_filename('zone-validators-enabled-sets.yaml'))
+            active_ids = [v.id for v in Zone.registered_zone_validators()]
+            self.assertIn('multi-value-mx', active_ids)
+            self.assertIn('apex-spf-presence', active_ids)
+
+    def test_record_validators_renamed_key(self):
+        with validators_snapshot():
+            Manager(
+                get_config_filename(
+                    'zone-validators-record-validators-renamed.yaml'
+                )
+            )
+            global_validators = Record.registered_validators()['record'].get(
+                '*', []
+            )
+            self.assertTrue(
+                any(v.id == 'my-test-validator' for v in global_validators)
+            )
+
+    def test_record_validators_legacy_key_deprecated(self):
+        with validators_snapshot():
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter('always')
+                Manager(
+                    get_config_filename(
+                        'zone-validators-record-validators-legacy-key.yaml'
+                    )
+                )
+            self.assertTrue(
+                any(
+                    'record.validators' in str(warning.message)
+                    for warning in w
+                    if issubclass(warning.category, DeprecationWarning)
+                )
+            )
+
+    def test_record_validators_both_keys_raises(self):
+        with validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename(
+                        'zone-validators-record-validators-both-keys.yaml'
+                    )
+                )
+            self.assertIn(
+                'record.validators and manager.validators.validators cannot both be set',
+                str(ctx.exception),
+            )
+
+    def test_disable_record_validators_renamed_key(self):
+        with validators_snapshot():
+            Manager(
+                get_config_filename(
+                    'zone-validators-disable-record-validators-renamed.yaml'
+                )
+            )
+            global_validators = Record.registered_validators()['record'].get(
+                '*', []
+            )
+            self.assertFalse(
+                any(v.id == 'healthcheck' for v in global_validators)
+            )
+
+    def test_disable_record_validators_legacy_key_deprecated(self):
+        with validators_snapshot():
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter('always')
+                Manager(
+                    get_config_filename(
+                        'zone-validators-disable-record-validators-legacy-key.yaml'
+                    )
+                )
+            self.assertTrue(
+                any(
+                    'record.disable_validators' in str(warning.message)
+                    for warning in w
+                    if issubclass(warning.category, DeprecationWarning)
+                )
+            )
+
+    def test_disable_record_validators_both_keys_raises(self):
+        with validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename(
+                        'zone-validators-disable-record-validators-both-keys.yaml'
+                    )
+                )
+            self.assertIn(
+                'record.disable_validators and manager.validators.disable_validators cannot both be set',
+                str(ctx.exception),
+            )
+
+    def test_zone_validators_disable_bridge(self):
+        with zone_validators_snapshot():
+            with self.assertRaises(ManagerException) as ctx:
+                Manager(
+                    get_config_filename('zone-validators-disable-bridge.yaml')
+                )
+            self.assertIn('Cannot disable bridge', str(ctx.exception))
+
+    def test_zone_validators_disable_active_logs_info(self):
+        with zone_validators_snapshot():
+            with self.assertLogs('Manager', level='INFO') as logs:
+                Manager(
+                    get_config_filename('zone-validators-disable-active.yaml')
+                )
+            self.assertTrue(
+                any(
+                    'disabled zone validator' in msg and 'multi-value-mx' in msg
+                    for msg in logs.output
+                )
+            )
+
+    def test_zone_validators_lifecycle_in_populate_and_plan(self):
+        # Test that zone validators run in _populate_and_plan and raise when
+        # not lenient, and log a warning when lenient.
+        with zone_validators_snapshot():
+            with TemporaryDirectory() as tmpdir:
+                environ['YAML_TMP_DIR'] = tmpdir.dirname
+                environ['YAML_TMP_DIR2'] = tmpdir.dirname
+                manager = Manager(get_config_filename('simple.yaml'))
+                with patch.object(
+                    Zone.validators,
+                    'process_zone',
+                    return_value=['zone is broken'],
+                ):
+                    with self.assertRaises(ValidationError) as ctx:
+                        manager.sync(
+                            dry_run=True, eligible_zones=['unit.tests.']
+                        )
+                    self.assertIn('zone is broken', str(ctx.exception))
+
+    def test_zone_validators_lifecycle_lenient_in_populate_and_plan(self):
+        with zone_validators_snapshot():
+            with TemporaryDirectory() as tmpdir:
+                environ['YAML_TMP_DIR'] = tmpdir.dirname
+                environ['YAML_TMP_DIR2'] = tmpdir.dirname
+                manager = Manager(
+                    get_config_filename('simple-lenient-zone.yaml')
+                )
+                with patch.object(
+                    Zone.validators,
+                    'process_zone',
+                    return_value=['zone is broken'],
+                ):
+                    with self.assertLogs('Zone', level='WARNING') as logs:
+                        manager.sync(dry_run=True)
+                    self.assertTrue(
+                        any('zone is broken' in msg for msg in logs.output)
+                    )
+
+    def test_zone_validators_lifecycle_in_dump(self):
+        with zone_validators_snapshot():
+            with TemporaryDirectory() as tmpdir:
+                manager = Manager(get_config_filename('simple.yaml'))
+                with patch.object(
+                    Zone.validators,
+                    'process_zone',
+                    return_value=['zone is broken'],
+                ):
+                    with self.assertRaises(ValidationError) as ctx:
+                        manager.dump(
+                            zone='unit.tests.',
+                            output_dir=tmpdir.dirname,
+                            sources=['in'],
+                        )
+                    self.assertIn('zone is broken', str(ctx.exception))
+
+    def test_zone_validators_lifecycle_lenient_in_dump(self):
+        with zone_validators_snapshot():
+            with TemporaryDirectory() as tmpdir:
+                manager = Manager(get_config_filename('simple.yaml'))
+                with patch.object(
+                    Zone.validators,
+                    'process_zone',
+                    return_value=['zone is broken'],
+                ):
+                    with self.assertLogs('Zone', level='WARNING') as logs:
+                        manager.dump(
+                            zone='unit.tests.',
+                            output_dir=tmpdir.dirname,
+                            sources=['in'],
+                            lenient=True,
+                        )
+                    self.assertTrue(
+                        any('zone is broken' in msg for msg in logs.output)
+                    )
+
+    def test_zone_validators_lifecycle_in_validate_configs(self):
+        with zone_validators_snapshot():
+            with patch.object(
+                Zone.validators, 'process_zone', return_value=['zone is broken']
+            ):
+                with self.assertRaises(ValidationError) as ctx:
+                    Manager(
+                        get_config_filename('simple-validate.yaml')
+                    ).validate_configs()
+                self.assertIn('zone is broken', str(ctx.exception))
+
+    def test_zone_validators_lifecycle_lenient_in_validate_configs(self):
+        with zone_validators_snapshot():
+            with patch.object(
+                Zone.validators, 'process_zone', return_value=['zone is broken']
+            ):
+                with self.assertLogs('Zone', level='WARNING') as logs:
+                    Manager(
+                        get_config_filename('simple-validate.yaml')
+                    ).validate_configs(lenient=True)
+                self.assertTrue(
+                    any('zone is broken' in msg for msg in logs.output)
+                )
 
     def test_source_only_as_a_target(self):
         with self.assertRaises(ManagerException) as ctx:
