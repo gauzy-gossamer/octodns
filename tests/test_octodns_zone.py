@@ -13,6 +13,7 @@ from octodns.record import (
     ARecord,
     Create,
     Delete,
+    MxRecord,
     NsRecord,
     Record,
     Update,

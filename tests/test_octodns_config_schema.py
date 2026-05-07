@@ -116,6 +116,27 @@ class TestConfigSchema(TestCase):
             self._base(manager={'auto_arpa': {'unknown_kwarg': True}})
         )
 
+    def test_validators_unknown_key_rejected(self):
+        self._invalid(
+            self._base(manager={'validators': {'typo_enabled': ['legacy']}})
+        )
+
+    def test_validators_record_unknown_key_rejected(self):
+        self._invalid(
+            self._base(
+                manager={
+                    'validators': {'record': {'typo_validators': {'*': ['v']}}}
+                }
+            )
+        )
+
+    def test_validators_zone_unknown_key_rejected(self):
+        self._invalid(
+            self._base(
+                manager={'validators': {'zone': {'typo_validators': ['my-v']}}}
+            )
+        )
+
     def test_plan_outputs_logger_bad_level_rejected(self):
         self._invalid(
             self._base(

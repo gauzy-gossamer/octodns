@@ -282,10 +282,12 @@ def _manager_def():
             'post_processors': _STRING_ARRAY,
             'validators': {
                 'type': 'object',
+                'additionalProperties': False,
                 'properties': {
                     'enabled': _STRING_ARRAY,
                     'record': {
                         'type': 'object',
+                        'additionalProperties': False,
                         'properties': {
                             'validators': _TYPE_TO_NAMES_MAP,
                             'disable_validators': _TYPE_TO_NAMES_MAP,
@@ -293,6 +295,7 @@ def _manager_def():
                     },
                     'zone': {
                         'type': 'object',
+                        'additionalProperties': False,
                         'properties': {
                             'validators': _STRING_ARRAY,
                             'disable_validators': _STRING_ARRAY,
