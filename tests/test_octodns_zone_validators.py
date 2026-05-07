@@ -310,62 +310,6 @@ class TestZoneValidateMethod(TestCase):
             self.assertTrue(any('zone has a problem' in m for m in logs.output))
 
 
-class TestZoneGet(TestCase):
-    def test_get_all_at_name(self):
-        zone = _make_zone()
-        record = _add_record(
-            zone, 'www', {'ttl': 300, 'type': 'A', 'value': '1.2.3.4'}
-        )
-        zone.add_record(record)
-        result = zone.get('www')
-        self.assertIn(record, result)
-
-    def test_get_filtered_by_type(self):
-        zone = _make_zone()
-        a = _add_record(
-            zone, 'host', {'ttl': 300, 'type': 'A', 'value': '1.2.3.4'}
-        )
-        zone.add_record(a)
-        result = zone.get('host', type='A')
-        self.assertIn(a, result)
-        result_miss = zone.get('host', type='MX')
-        self.assertEqual(set(), result_miss)
-
-    def test_get_missing_name(self):
-        zone = _make_zone()
-        self.assertEqual(set(), zone.get('nonexistent'))
-        self.assertEqual(set(), zone.get('nonexistent', type='A'))
-
-    def test_get_apex(self):
-        zone = _make_zone()
-        ns = _add_record(
-            zone,
-            '',
-            {
-                'ttl': 300,
-                'type': 'NS',
-                'values': ['ns1.unit.tests.', 'ns2.unit.tests.'],
-            },
-        )
-        zone.add_record(ns, replace=True)
-        result = zone.get('')
-        self.assertIn(ns, result)
-        result_ns = zone.get('', type='NS')
-        self.assertIn(ns, result_ns)
-        result_mx = zone.get('', type='MX')
-        self.assertEqual(set(), result_mx)
-
-    def test_get_on_shallow_copy(self):
-        zone = _make_zone()
-        a = _add_record(
-            zone, 'www', {'ttl': 300, 'type': 'A', 'value': '5.6.7.8'}
-        )
-        zone.add_record(a)
-        copy = zone.copy()
-        result = copy.get('www', type='A')
-        self.assertIn(a, result)
-
-
 class TestBuiltinZoneValidators(TestCase):
     def test_multi_value_mx_passes_two_values(self):
         zone = _make_zone()

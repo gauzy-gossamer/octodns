@@ -923,3 +923,60 @@ class TestZone(TestCase):
         # finally remove the root NS, no more
         zone.remove_record(root_ns)
         self.assertFalse(zone.root_ns)
+
+
+class TestZoneGet(TestCase):
+    def test_get_all_at_name(self):
+        zone = Zone('unit.tests.', [])
+        a = ARecord(zone, 'www', {'ttl': 300, 'value': '1.2.3.4'})
+        zone.add_record(a)
+        self.assertEqual({a}, zone.get('www'))
+
+    def test_get_filtered_by_type(self):
+        zone = Zone('unit.tests.', [])
+        a = ARecord(zone, 'host', {'ttl': 300, 'value': '1.2.3.4'})
+        zone.add_record(a)
+        self.assertEqual({a}, zone.get('host', type='A'))
+        self.assertEqual(set(), zone.get('host', type='MX'))
+
+    def test_get_multiple_types_at_same_name(self):
+        zone = Zone('unit.tests.', [])
+        a = ARecord(zone, 'host', {'ttl': 300, 'value': '1.2.3.4'})
+        mx = MxRecord(
+            zone,
+            'host',
+            {
+                'ttl': 300,
+                'values': [{'preference': 10, 'exchange': 'mail.unit.tests.'}],
+            },
+        )
+        zone.add_record(a)
+        zone.add_record(mx)
+        self.assertEqual({a, mx}, zone.get('host'))
+        self.assertEqual({a}, zone.get('host', type='A'))
+        self.assertEqual({mx}, zone.get('host', type='MX'))
+
+    def test_get_missing_name(self):
+        zone = Zone('unit.tests.', [])
+        self.assertEqual(set(), zone.get('nonexistent'))
+        self.assertEqual(set(), zone.get('nonexistent', type='A'))
+
+    def test_get_apex(self):
+        zone = Zone('unit.tests.', [])
+        ns = NsRecord(
+            zone,
+            '',
+            {'ttl': 300, 'values': ['ns1.unit.tests.', 'ns2.unit.tests.']},
+        )
+        zone.add_record(ns, replace=True)
+        self.assertIn(ns, zone.get(''))
+        self.assertIn(ns, zone.get('', type='NS'))
+        self.assertEqual(set(), zone.get('', type='MX'))
+
+    def test_get_on_shallow_copy(self):
+        zone = Zone('unit.tests.', [])
+        a = ARecord(zone, 'www', {'ttl': 300, 'value': '5.6.7.8'})
+        zone.add_record(a)
+        copy = zone.copy()
+        self.assertIsNotNone(copy._origin)
+        self.assertEqual({a}, copy.get('www', type='A'))
