@@ -2,6 +2,6 @@ manager:
   validators:
     zone:
       disable_validators:
-        - multi-value-mx
+        - mail
 providers: {}
 zones: {}

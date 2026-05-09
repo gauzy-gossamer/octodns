@@ -418,12 +418,12 @@ class TestManager(TestCase):
         with zone_validators_snapshot():
             Manager(get_config_filename('zone-validators-enabled-sets.yaml'))
             active_ids = [v.id for v in Zone.registered_zone_validators()]
-            self.assertIn('multi-value-mx', active_ids)
+            self.assertIn('mail', active_ids)
 
         with zone_validators_snapshot():
             Manager(get_config_filename('zone-validators-disable.yaml'))
             active_ids = [v.id for v in Zone.registered_zone_validators()]
-            self.assertNotIn('multi-value-mx', active_ids)
+            self.assertNotIn('mail', active_ids)
 
     def test_zone_validators_disable_unknown(self):
         with zone_validators_snapshot():
@@ -443,8 +443,7 @@ class TestManager(TestCase):
         with zone_validators_snapshot():
             Manager(get_config_filename('zone-validators-enabled-sets.yaml'))
             active_ids = [v.id for v in Zone.registered_zone_validators()]
-            self.assertIn('multi-value-mx', active_ids)
-            self.assertIn('apex-spf-presence', active_ids)
+            self.assertIn('mail', active_ids)
 
     def test_record_validators_renamed_key(self):
         with validators_snapshot():
@@ -550,7 +549,7 @@ class TestManager(TestCase):
                 )
             self.assertTrue(
                 any(
-                    'disabled zone validator' in msg and 'multi-value-mx' in msg
+                    'disabled zone validator' in msg and 'mail' in msg
                     for msg in logs.output
                 )
             )

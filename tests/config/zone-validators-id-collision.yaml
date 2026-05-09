@@ -1,5 +1,5 @@
 validators:
-  multi-value-mx:
+  mail:
     class: helpers.TestZoneValidator
 providers: {}
 zones: {}

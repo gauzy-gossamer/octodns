@@ -127,61 +127,237 @@ class ZoneValidator:
         return []
 
 
-class MultiValueMxZoneValidator(ZoneValidator):
+class MailZoneValidator(ZoneValidator):
     '''
-    Checks that every MX record in the zone has at least two values.
-    Single-value MX records are technically valid but are not recommended
-    in production zones as they create a single point of failure.
+    Comprehensive best-practice validator for mail records (MX, SPF, DMARC).
+
+    Can operate in two modes: 'mail' and 'no-mail'. In 'auto' mode (default), it
+    detects the mode based on the presence of non-null MX records at the apex.
+
+    'mail' mode enforces:
+    - Multiple MX records for redundancy (at apex and throughout the zone).
+    - Presence of an SPF record at the apex.
+    - SPF record terminates with ~all or -all.
+    - Presence of a DMARC record at _dmarc.
+
+    'no-mail' mode enforces:
+    - Presence of a single Null MX record (0 .) at the apex.
+    - SPF record at the apex is exactly 'v=spf1 -all'.
+    - DMARC record at _dmarc has p=reject.
     '''
 
-    def validate(self, zone):
+    def __init__(self, id, mode='auto', sets=None):
+        super().__init__(id, sets=sets)
+        if mode not in ('auto', 'mail', 'no-mail'):
+            raise ValueError(f'Unknown mode "{mode}"')
+        self.mode = mode
+
+    def _validate_mail(self, zone):
         reasons = []
+
+        # MX redundancy (Apex and elsewhere)
         for record in zone.records:
-            if record._type == 'MX' and len(record.values) < 2:
-                reasons.append(
-                    ValidationReason(
-                        f'MX record "{record.fqdn}" should have at least 2 values'
-                        f' for redundancy, found {len(record.values)}',
-                        [record],
+            if record._type == 'MX':
+                if len(record.values) < 2:
+                    reasons.append(
+                        ValidationReason(
+                            f'MX record "{record.fqdn}" should have at least 2'
+                            f' values for redundancy, found'
+                            f' {len(record.values)}',
+                            [record],
+                        )
                     )
-                )
-        return reasons
 
-
-class ApexSpfPresenceZoneValidator(ZoneValidator):
-    '''
-    Checks that the zone apex has at least one TXT record whose value begins
-    with ``v=spf1``, indicating an SPF policy is published. Publishing SPF
-    records helps prevent email spoofing of the domain.
-    '''
-
-    def validate(self, zone):
-        apex_txts = zone.get('', type='TXT')
-        if not apex_txts:
-            return [
+        # Check for presence at apex
+        apex_mxs = zone.get('', type='MX')
+        if not apex_mxs:
+            reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" has no TXT records at the apex;'
-                    ' add an SPF record (v=spf1 ...)',
+                    f'zone "{zone.decoded_name}" handles mail but is missing'
+                    ' MX records at the apex',
                     [],
                 )
-            ]
-        for record in apex_txts:
-            for value in record.values:
-                if str(value).startswith('v=spf1'):
-                    return []
-        return [
-            ValidationReason(
-                f'zone "{zone.decoded_name}" has no SPF TXT record at the apex'
-                ' (no value starting with "v=spf1")',
-                apex_txts,
             )
-        ]
+
+        # SPF
+        apex_txts = zone.get('', type='TXT')
+        spf_record = None
+        if apex_txts:
+            # We expect at most one TXT record at apex that contains all values
+            apex_txt = next(iter(apex_txts))
+            for value in apex_txt.values:
+                # Internally everything is escaped
+                val = str(value).replace('\\', '')
+                if val.lower().startswith('v=spf1'):
+                    if spf_record:
+                        reasons.append(
+                            ValidationReason(
+                                f'zone "{zone.decoded_name}" has multiple'
+                                ' SPF TXT values at the apex',
+                                [apex_txt],
+                            )
+                        )
+                    spf_record = val
+
+        if not spf_record:
+            reasons.append(
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" handles mail but is missing'
+                    ' an SPF TXT record at the apex',
+                    list(apex_txts) if apex_txts else [],
+                )
+            )
+        elif not (
+            spf_record.lower().endswith(' -all')
+            or spf_record.lower().endswith(' ~all')
+        ):
+            reasons.append(
+                ValidationReason(
+                    f'SPF record at the apex of "{zone.decoded_name}" should'
+                    ' terminate with "~all" or "-all"',
+                    list(apex_txts),
+                )
+            )
+
+        # DMARC
+        dmarc_txts = zone.get('_dmarc', type='TXT')
+        dmarc_value = None
+        if dmarc_txts:
+            dmarc_txt = next(iter(dmarc_txts))
+            for value in dmarc_txt.values:
+                # Internally everything is escaped
+                val = str(value).replace('\\', '')
+                if val.lower().startswith('v=dmarc1;'):
+                    dmarc_value = val
+                    break
+
+        if not dmarc_value:
+            reasons.append(
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" handles mail but is missing'
+                    ' a DMARC TXT record at _dmarc',
+                    list(dmarc_txts) if dmarc_txts else [],
+                )
+            )
+        elif 'p=' not in dmarc_value.lower():
+            dmarc_txt = next(iter(dmarc_txts))
+            reasons.append(
+                ValidationReason(
+                    f'DMARC record at _dmarc.{zone.decoded_name} is missing'
+                    ' a policy (p=...)',
+                    [dmarc_txt],
+                )
+            )
+
+        return reasons
+
+    def _validate_no_mail(self, zone):
+        reasons = []
+
+        # MX
+        apex_mxs = zone.get('', type='MX')
+        if not apex_mxs:
+            reasons.append(
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" does not handle mail but is'
+                    ' missing a Null MX record (0 .)',
+                    [],
+                )
+            )
+        else:
+            apex_mx = next(iter(apex_mxs))
+            if (
+                len(apex_mx.values) != 1
+                or apex_mx.values[0].preference != 0
+                or str(apex_mx.values[0].exchange) != '.'
+            ):
+                reasons.append(
+                    ValidationReason(
+                        f'zone "{zone.decoded_name}" does not handle mail and'
+                        ' should have a single Null MX record (0 .)',
+                        [apex_mx],
+                    )
+                )
+
+        # SPF
+        apex_txts = zone.get('', type='TXT')
+        spf_value = None
+        has_other_spf_values = False
+        if apex_txts:
+            apex_txt = next(iter(apex_txts))
+            for value in apex_txt.values:
+                # Internally everything is escaped
+                val = str(value).replace('\\', '')
+                if val.lower().startswith('v=spf1'):
+                    if spf_value:
+                        has_other_spf_values = True
+                    spf_value = val
+        if (
+            spf_value is None
+            or spf_value.lower() != 'v=spf1 -all'
+            or has_other_spf_values
+            or (apex_txts and len(next(iter(apex_txts)).values) != 1)
+        ):
+            reasons.append(
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" does not handle mail and'
+                    ' should have a single strict SPF TXT record'
+                    ' "v=spf1 -all"',
+                    list(apex_txts) if apex_txts else [],
+                )
+            )
+
+        # DMARC
+        dmarc_txts = zone.get('_dmarc', type='TXT')
+        dmarc_value = None
+        has_other_dmarc_values = False
+        if dmarc_txts:
+            dmarc_txt = next(iter(dmarc_txts))
+            for value in dmarc_txt.values:
+                # Internally everything is escaped
+                val = str(value).replace('\\', '')
+                if val.lower().startswith('v=dmarc1;'):
+                    if dmarc_value:
+                        has_other_dmarc_values = True
+                    dmarc_value = val
+        if (
+            not dmarc_value
+            or 'p=reject' not in dmarc_value.lower()
+            or has_other_dmarc_values
+            or (dmarc_txts and len(next(iter(dmarc_txts)).values) != 1)
+        ):
+            reasons.append(
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" does not handle mail and'
+                    ' should have a DMARC TXT record with "v=DMARC1; p=reject;"',
+                    list(dmarc_txts) if dmarc_txts else [],
+                )
+            )
+
+        return reasons
+
+    def validate(self, zone):
+        mode = self.mode
+        if mode == 'auto':
+            apex_mxs = zone.get('', type='MX')
+            if apex_mxs:
+                apex_mx = next(iter(apex_mxs))
+                if not (
+                    len(apex_mx.values) == 1
+                    and apex_mx.values[0].preference == 0
+                    and str(apex_mx.values[0].exchange) == '.'
+                ):
+                    mode = 'mail'
+                else:
+                    mode = 'no-mail'
+            else:
+                mode = 'no-mail'
+
+        if mode == 'mail':
+            return self._validate_mail(zone)
+        else:
+            return self._validate_no_mail(zone)
 
 
 zone_validators = ZoneValidatorRegistry()
-zone_validators.register(
-    MultiValueMxZoneValidator('multi-value-mx', sets={'best-practice'})
-)
-zone_validators.register(
-    ApexSpfPresenceZoneValidator('apex-spf-presence', sets={'best-practice'})
-)
+zone_validators.register(MailZoneValidator('mail', sets={'best-practice'}))
