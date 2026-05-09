@@ -563,10 +563,12 @@ class TestManager(TestCase):
                 environ['YAML_TMP_DIR'] = tmpdir.dirname
                 environ['YAML_TMP_DIR2'] = tmpdir.dirname
                 manager = Manager(get_config_filename('simple.yaml'))
+                from octodns.zone.validator import ValidationReason
+
                 with patch.object(
                     Zone.validators,
                     'process_zone',
-                    return_value=['zone is broken'],
+                    return_value=[ValidationReason('zone is broken', [])],
                 ):
                     with self.assertRaises(ValidationError) as ctx:
                         manager.sync(
@@ -582,10 +584,12 @@ class TestManager(TestCase):
                 manager = Manager(
                     get_config_filename('simple-lenient-zone.yaml')
                 )
+                from octodns.zone.validator import ValidationReason
+
                 with patch.object(
                     Zone.validators,
                     'process_zone',
-                    return_value=['zone is broken'],
+                    return_value=[ValidationReason('zone is broken', [])],
                 ):
                     with self.assertLogs('Zone', level='WARNING') as logs:
                         manager.sync(dry_run=True)
@@ -597,10 +601,12 @@ class TestManager(TestCase):
         with zone_validators_snapshot():
             with TemporaryDirectory() as tmpdir:
                 manager = Manager(get_config_filename('simple.yaml'))
+                from octodns.zone.validator import ValidationReason
+
                 with patch.object(
                     Zone.validators,
                     'process_zone',
-                    return_value=['zone is broken'],
+                    return_value=[ValidationReason('zone is broken', [])],
                 ):
                     with self.assertRaises(ValidationError) as ctx:
                         manager.dump(
@@ -614,10 +620,12 @@ class TestManager(TestCase):
         with zone_validators_snapshot():
             with TemporaryDirectory() as tmpdir:
                 manager = Manager(get_config_filename('simple.yaml'))
+                from octodns.zone.validator import ValidationReason
+
                 with patch.object(
                     Zone.validators,
                     'process_zone',
-                    return_value=['zone is broken'],
+                    return_value=[ValidationReason('zone is broken', [])],
                 ):
                     with self.assertLogs('Zone', level='WARNING') as logs:
                         manager.dump(
@@ -632,8 +640,12 @@ class TestManager(TestCase):
 
     def test_zone_validators_lifecycle_in_validate_configs(self):
         with zone_validators_snapshot():
+            from octodns.zone.validator import ValidationReason
+
             with patch.object(
-                Zone.validators, 'process_zone', return_value=['zone is broken']
+                Zone.validators,
+                'process_zone',
+                return_value=[ValidationReason('zone is broken', [])],
             ):
                 with self.assertRaises(ValidationError) as ctx:
                     Manager(
@@ -643,8 +655,12 @@ class TestManager(TestCase):
 
     def test_zone_validators_lifecycle_lenient_in_validate_configs(self):
         with zone_validators_snapshot():
+            from octodns.zone.validator import ValidationReason
+
             with patch.object(
-                Zone.validators, 'process_zone', return_value=['zone is broken']
+                Zone.validators,
+                'process_zone',
+                return_value=[ValidationReason('zone is broken', [])],
             ):
                 with self.assertLogs('Zone', level='WARNING') as logs:
                     Manager(

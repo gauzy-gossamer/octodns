@@ -13,6 +13,7 @@ from octodns.zone.exception import ValidationError, ZoneException
 from octodns.zone.validator import (
     ApexSpfPresenceZoneValidator,
     MultiValueMxZoneValidator,
+    ValidationReason,
     ZoneValidator,
     ZoneValidatorRegistry,
 )
@@ -204,7 +205,13 @@ class TestZoneValidatorRegistry(TestCase):
 
     def test_process_zone_collects_reasons(self):
         with zone_validators_snapshot():
-            reasons_returned = ['reason one', 'reason two']
+            zone = _make_zone()
+            records = [
+                _add_record(
+                    zone, 'a', {'ttl': 30, 'type': 'A', 'value': '1.2.3.4'}
+                )
+            ]
+            reasons_returned = [ValidationReason('reason one', records)]
 
             class FailingValidator(ZoneValidator):
                 def validate(self, zone):
@@ -214,9 +221,39 @@ class TestZoneValidatorRegistry(TestCase):
             reg.register(FailingValidator('failing'))
             reg.enable_sets(set())
             reg.enable('failing')
-            zone = _make_zone()
             result = reg.process_zone(zone)
             self.assertEqual(reasons_returned, result)
+            self.assertEqual('reason one', str(result[0]))
+            self.assertEqual(set(records), result[0].records)
+            self.assertFalse(result[0].lenient)
+
+    def test_process_zone_collects_reasons_lenient(self):
+        with zone_validators_snapshot():
+            zone = _make_zone()
+            records = [
+                _add_record(
+                    zone,
+                    'a',
+                    {
+                        'ttl': 30,
+                        'type': 'A',
+                        'value': '1.2.3.4',
+                        'octodns': {'lenient': True},
+                    },
+                )
+            ]
+            reasons_returned = [ValidationReason('reason one', records)]
+
+            class FailingValidator(ZoneValidator):
+                def validate(self, zone):
+                    return reasons_returned
+
+            Zone.register_zone_validator(FailingValidator('failing'))
+            Zone.enable_zone_validators(set())
+            Zone.enable_zone_validator('failing')
+            with self.assertLogs('Zone', level='WARNING') as logs:
+                zone.validate()
+            self.assertTrue(any('reason one' in m for m in logs.output))
 
     def test_process_zone_no_active_no_reasons(self):
         with zone_validators_snapshot():
@@ -282,7 +319,7 @@ class TestZoneValidateMethod(TestCase):
 
             class FailValidator(ZoneValidator):
                 def validate(self, zone):
-                    return ['zone has a problem']
+                    return [ValidationReason('zone has a problem', [])]
 
             reg_v = FailValidator('fail-test')
             Zone.register_zone_validator(reg_v)
@@ -298,7 +335,7 @@ class TestZoneValidateMethod(TestCase):
 
             class FailValidator(ZoneValidator):
                 def validate(self, zone):
-                    return ['zone has a problem']
+                    return [ValidationReason('zone has a problem', [])]
 
             reg_v = FailValidator('fail-lenient')
             Zone.register_zone_validator(reg_v)
@@ -344,8 +381,8 @@ class TestBuiltinZoneValidators(TestCase):
         v = MultiValueMxZoneValidator('test')
         reasons = v.validate(zone)
         self.assertEqual(1, len(reasons))
-        self.assertIn('at least 2 values', reasons[0])
-        self.assertIn('unit.tests.', reasons[0])
+        self.assertIn('at least 2 values', str(reasons[0]))
+        self.assertIn('unit.tests.', str(reasons[0]))
 
     def test_multi_value_mx_no_mx_records(self):
         zone = _make_zone()
@@ -367,7 +404,7 @@ class TestBuiltinZoneValidators(TestCase):
         v = MultiValueMxZoneValidator('test')
         reasons = v.validate(zone)
         self.assertEqual(1, len(reasons))
-        self.assertIn('sub.unit.tests.', reasons[0])
+        self.assertIn('sub.unit.tests.', str(reasons[0]))
 
     def test_apex_spf_presence_passes(self):
         zone = _make_zone()
@@ -389,7 +426,7 @@ class TestBuiltinZoneValidators(TestCase):
         v = ApexSpfPresenceZoneValidator('test')
         reasons = v.validate(zone)
         self.assertEqual(1, len(reasons))
-        self.assertIn('no TXT records', reasons[0])
+        self.assertIn('no TXT records', str(reasons[0]))
 
     def test_apex_spf_presence_fails_no_spf_value(self):
         zone = _make_zone()
@@ -402,7 +439,7 @@ class TestBuiltinZoneValidators(TestCase):
         v = ApexSpfPresenceZoneValidator('test')
         reasons = v.validate(zone)
         self.assertEqual(1, len(reasons))
-        self.assertIn('v=spf1', reasons[0])
+        self.assertIn('v=spf1', str(reasons[0]))
 
     def test_builtin_ids(self):
         ids = [v.id for v in Zone.validators.available_validators()]
@@ -429,7 +466,7 @@ class TestBuiltinZoneValidators(TestCase):
             zone = _make_zone()
             reasons = v.validate(zone)
             self.assertEqual(1, len(reasons))
-            self.assertIn('MX record', reasons[0])
+            self.assertIn('MX record', str(reasons[0]))
 
             mx = _add_record(
                 zone,

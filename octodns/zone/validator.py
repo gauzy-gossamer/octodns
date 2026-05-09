@@ -61,22 +61,38 @@ class ZoneValidatorRegistry:
                 'process_zone: no zone validators configured, automatically enabling legacy set'
             )
             self.enable_sets({'legacy'})
+
         reasons = []
         for validator in self.active.values():
             reasons.extend(validator.validate(zone))
+
         return reasons
+
+
+class ValidationReason:
+    def __init__(self, reason, records):
+        self.reason = reason
+        self.records = set(records)
+
+    @property
+    def lenient(self):
+        return bool(self.records) and all(r.lenient for r in self.records)
+
+    def __str__(self):
+        return self.reason
 
 
 class ZoneValidator:
     '''
     Base class for zone-level validators.
 
-    Subclasses override ``validate`` to return a list of reason strings
-    describing any validation failures. An empty list indicates the zone is
-    valid. The zone validator receives the fully assembled desired Zone and
-    may examine any records within it. Because zone validators see the whole
-    zone at once, they are suited for cross-record checks (e.g. requiring at
-    least two MX values at the apex) that per-record validators cannot perform.
+    Subclasses override ``validate`` to return a list of ValidationReason
+    objects describing any validation failures. An empty list indicates the
+    zone is valid. The zone validator receives the fully assembled desired
+    Zone and may examine any records within it. Because zone validators see
+    the whole zone at once, they are suited for cross-record checks (e.g.
+    requiring at least two MX values at the apex) that per-record validators
+    cannot perform.
 
     Every zone validator instance has a non-empty ``id`` — a short, stable,
     kebab-case identifier (e.g. ``'multi-value-mx'``). Config-registered
@@ -100,7 +116,7 @@ class ZoneValidator:
         Validate a fully populated zone.
 
         :param zone: The Zone to validate.
-        :returns: list[str] of reason strings; empty when valid.
+        :returns: list[ValidationReason] of reason objects; empty when valid.
         '''
         return []
 
@@ -117,8 +133,11 @@ class MultiValueMxZoneValidator(ZoneValidator):
         for record in zone.records:
             if record._type == 'MX' and len(record.values) < 2:
                 reasons.append(
-                    f'MX record "{record.fqdn}" should have at least 2 values'
-                    f' for redundancy, found {len(record.values)}'
+                    ValidationReason(
+                        f'MX record "{record.fqdn}" should have at least 2 values'
+                        f' for redundancy, found {len(record.values)}',
+                        [record],
+                    )
                 )
         return reasons
 
@@ -134,16 +153,22 @@ class ApexSpfPresenceZoneValidator(ZoneValidator):
         apex_txts = zone.get('', type='TXT')
         if not apex_txts:
             return [
-                f'zone "{zone.decoded_name}" has no TXT records at the apex;'
-                ' add an SPF record (v=spf1 ...)'
+                ValidationReason(
+                    f'zone "{zone.decoded_name}" has no TXT records at the apex;'
+                    ' add an SPF record (v=spf1 ...)',
+                    [],
+                )
             ]
         for record in apex_txts:
             for value in record.values:
                 if str(value).startswith('v=spf1'):
                     return []
         return [
-            f'zone "{zone.decoded_name}" has no SPF TXT record at the apex'
-            ' (no value starting with "v=spf1")'
+            ValidationReason(
+                f'zone "{zone.decoded_name}" has no SPF TXT record at the apex'
+                ' (no value starting with "v=spf1")',
+                apex_txts,
+            )
         ]
 
 

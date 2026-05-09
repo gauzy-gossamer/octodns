@@ -14,7 +14,7 @@ from octodns.record import Record
 from octodns.record.validator import RecordValidator, ValueValidator
 from octodns.secret.base import BaseSecrets
 from octodns.zone import Zone
-from octodns.zone.validator import ZoneValidator
+from octodns.zone.validator import ValidationReason, ZoneValidator
 
 
 @contextmanager
@@ -213,7 +213,9 @@ class TestZoneValidator(ZoneValidator):
         if self.require_mx:
             mx_records = zone.get('', type='MX')
             if not mx_records:
-                return ['zone apex is missing an MX record']
+                return [
+                    ValidationReason('zone apex is missing an MX record', [])
+                ]
         return []
 
 

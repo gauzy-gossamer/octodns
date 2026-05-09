@@ -291,13 +291,26 @@ class Zone(object):
 
     def validate(self, lenient=False):
         reasons = self.validators.process_zone(self)
-        if reasons:
-            if lenient:
-                self.log.warning(
-                    ValidationError.build_message(self.decoded_name, reasons)
-                )
+        if not reasons:
+            return
+
+        reasons_to_raise = []
+        reasons_to_warn = []
+        for reason in reasons:
+            if lenient or reason.lenient:
+                reasons_to_warn.append(reason)
             else:
-                raise ValidationError(self.decoded_name, reasons)
+                reasons_to_raise.append(reason)
+
+        if reasons_to_warn:
+            self.log.warning(
+                ValidationError.build_message(
+                    self.decoded_name, reasons_to_warn
+                )
+            )
+
+        if reasons_to_raise:
+            raise ValidationError(self.decoded_name, reasons_to_raise)
 
     def get(self, name, type=None):
         '''
