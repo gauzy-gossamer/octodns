@@ -1398,12 +1398,14 @@ class Manager(object):
             update_pcent_threshold = zone.get("update_pcent_threshold", None)
             delete_pcent_threshold = zone.get("delete_pcent_threshold", None)
             ignore_subzone_adds = zone.get("ignore_subzone_adds", False)
+            context = getattr(zone, 'context', None)
             return Zone(
                 idna_encode(zone_name),
                 sub_zones,
                 update_pcent_threshold,
                 delete_pcent_threshold,
                 ignore_subzone_adds=ignore_subzone_adds,
+                context=context,
             )
 
         raise ManagerException(f'Unknown zone name {idna_decode(zone_name)}')

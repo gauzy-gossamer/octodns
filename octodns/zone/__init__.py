@@ -161,6 +161,7 @@ class Zone(object):
         update_pcent_threshold=None,
         delete_pcent_threshold=None,
         ignore_subzone_adds=False,
+        context=None,
     ):
         '''
         Initialize a DNS zone.
@@ -186,6 +187,9 @@ class Zone(object):
                                     ``lenient=True`` keep their existing
                                     warn-and-add behavior.
         :type ignore_subzone_adds: bool
+        :param context: The context in which the zone was defined (e.g. the
+                        filename and line number it was found at).
+        :type context: str or None
 
         :raises InvalidNameError: If the zone name is invalid (missing trailing
                                   dot, contains double dots, or has whitespace).
@@ -227,6 +231,7 @@ class Zone(object):
         self.update_pcent_threshold = update_pcent_threshold
         self.delete_pcent_threshold = delete_pcent_threshold
         self.ignore_subzone_adds = ignore_subzone_adds
+        self.context = context
 
         # Copy-on-write semantics support, when `not None` this property will
         # point to a location with records for this `Zone`. Once `hydrated`
@@ -305,12 +310,14 @@ class Zone(object):
         if reasons_to_warn:
             self.log.warning(
                 ValidationError.build_message(
-                    self.decoded_name, reasons_to_warn
+                    self.decoded_name, reasons_to_warn, context=self.context
                 )
             )
 
         if reasons_to_raise:
-            raise ValidationError(self.decoded_name, reasons_to_raise)
+            raise ValidationError(
+                self.decoded_name, reasons_to_raise, context=self.context
+            )
 
     def get(self, name, type=None):
         '''
@@ -766,6 +773,8 @@ class Zone(object):
             self.sub_zones,
             self.update_pcent_threshold,
             self.delete_pcent_threshold,
+            ignore_subzone_adds=self.ignore_subzone_adds,
+            context=self.context,
         )
         copy._origin = self
         return copy

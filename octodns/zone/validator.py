@@ -79,7 +79,13 @@ class ValidationReason:
         return bool(self.records) and all(r.lenient for r in self.records)
 
     def __str__(self):
-        return self.reason
+        msg = self.reason
+        contexts = {
+            r.context for r in self.records if getattr(r, 'context', None)
+        }
+        if contexts:
+            msg += f" ({', '.join(sorted(contexts))})"
+        return msg
 
 
 class ZoneValidator:
