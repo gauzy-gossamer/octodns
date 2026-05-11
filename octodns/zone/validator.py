@@ -4,7 +4,7 @@
 
 from logging import getLogger
 
-from ..exception import ZoneException
+from .exception import ZoneException
 
 
 class ZoneValidatorRegistry:

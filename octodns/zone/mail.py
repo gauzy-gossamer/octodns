@@ -4,8 +4,8 @@
 
 from logging import getLogger
 
-from . import zone_validators
-from .base import ValidationReason, ZoneValidator
+from .base import Zone
+from .validator import ValidationReason, ZoneValidator
 
 
 class MailZoneValidator(ZoneValidator):
@@ -285,4 +285,4 @@ class MailZoneValidator(ZoneValidator):
         )
 
 
-zone_validators.register(MailZoneValidator('mail', sets={'best-practice'}))
+Zone.register_zone_validator(MailZoneValidator('mail', sets={'best-practice'}))
