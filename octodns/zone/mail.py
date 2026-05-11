@@ -117,12 +117,20 @@ class MailZoneValidator(ZoneValidator):
     ):
         reasons = []
 
+        records = set()
+        if apex_mx_record:
+            records.add(apex_mx_record)
+        if apex_txt:
+            records.add(apex_txt)
+        if dmarc_txt:
+            records.add(dmarc_txt)
+
         # MX
         if not apex_mx_record:
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail but is missing a Null MX record (0 .)',
-                    [],
+                    f'zone "{zone.decoded_name}" disables mail but is missing a Null MX record (0 .)',
+                    records,
                 )
             )
         elif (
@@ -132,7 +140,7 @@ class MailZoneValidator(ZoneValidator):
         ):
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail and should have a single Null MX record (0 .)',
+                    f'zone "{zone.decoded_name}" disables mail and should have a single Null MX record (0 .)',
                     [apex_mx_record],
                 )
             )
@@ -141,14 +149,14 @@ class MailZoneValidator(ZoneValidator):
         if apex_spf_value is None:
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail but is missing strict SPF TXT record "v=spf1 -all"',
-                    [],
+                    f'zone "{zone.decoded_name}" disables mail but is missing strict SPF TXT record "v=spf1 -all"',
+                    records,
                 )
             )
         elif not apex_spf_value == 'v=spf1 -all':
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail and should have a single strict SPF TXT record "v=spf1 -all"',
+                    f'zone "{zone.decoded_name}" disables mail and should have a single strict SPF TXT record "v=spf1 -all"',
                     [apex_txt],
                 )
             )
@@ -157,14 +165,14 @@ class MailZoneValidator(ZoneValidator):
         if dmarc_value is None:
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail but is missing strict DMARC TXT record "v=DMARC1; p=reject;"',
-                    [],
+                    f'zone "{zone.decoded_name}" disables mail but is missing strict DMARC TXT record "v=DMARC1; p=reject;"',
+                    records,
                 )
             )
         elif 'p=reject' not in dmarc_value:
             reasons.append(
                 ValidationReason(
-                    f'zone "{zone.decoded_name}" does not handle mail and should have a DMARC TXT record with "v=DMARC1; p=reject;"',
+                    f'zone "{zone.decoded_name}" disables mail and should have a DMARC TXT record with "v=DMARC1; p=reject;"',
                     [dmarc_txt],
                 )
             )
