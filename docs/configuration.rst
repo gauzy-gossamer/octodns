@@ -327,6 +327,20 @@ Validators active in ``best-practice`` only:
 | ``naptr-value-best-practice``    | NAPTR ``replacement`` must end with ``"."``   |
 +----------------------------------+-----------------------------------------------+
 
+Validators active in ``best-practice`` only that check the entire zone:
+
++----------------------------------+-----------------------------------------------+
+| id                               | description                                   |
++==================================+===============================================+
+| ``mail``                         | Comprehensive best-practice validator for mail|
+|                                  | records (MX, SPF, DMARC). It supports 'mail'  |
+|                                  | and 'no-mail' modes. In its default 'auto'    |
+|                                  | mode it is a no-op if no mail records (MX,    |
+|                                  | SPF, or DMARC) are found. If any are present  |
+|                                  | it enforces 'mail' or 'no-mail' based on the  |
+|                                  | presence of MX records at the apex.           |
++----------------------------------+-----------------------------------------------+
+
 The recommended configuration is to enable both sets::
 
   manager:

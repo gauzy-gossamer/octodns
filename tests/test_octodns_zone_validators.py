@@ -583,11 +583,10 @@ class TestMailZoneValidator(TestCase):
         self.assertIn('should have at least 2 values', str(reasons[0]))
         self.assertIn('missing an SPF TXT record', str(reasons[1]))
 
-        # Auto-detects 'no-mail' with empty MX
+        # Auto-detects 'no-mail' with empty MX is now a no-op
         zone = _make_zone()
         reasons = v.validate(zone)
-        # Should fail no-mail rules
-        self.assertIn('missing a Null MX record', str(reasons[0]))
+        self.assertEqual([], reasons)
 
         # Auto-detects 'no-mail' with Null MX
         mx = _add_record(
@@ -603,6 +602,66 @@ class TestMailZoneValidator(TestCase):
         reasons = v.validate(zone)
         # Should fail no-mail rules: SPF, DMARC
         self.assertIn('should have a single strict SPF', str(reasons[0]))
+
+        # Auto-detects 'no-mail' with SPF record
+        zone = _make_zone()
+        spf = _add_record(
+            zone,
+            '',
+            {
+                'ttl': 300,
+                'type': 'TXT',
+                'value': 'v=spf1 include:_spf.google.com ~all',
+            },
+        )
+        zone.add_record(spf)
+        reasons = v.validate(zone)
+        # Should detect no-mail because no apex MX, then fail no-mail because
+        # SPF isn't strict -all
+        self.assertIn('should have a single strict SPF', str(reasons[1]))
+
+        # Auto-detects 'no-mail' with DMARC record
+        zone = _make_zone()
+        dmarc = _add_record(
+            zone,
+            '_dmarc',
+            {'ttl': 300, 'type': 'TXT', 'value': 'v=DMARC1\\; p=none'},
+        )
+        zone.add_record(dmarc)
+        reasons = v.validate(zone)
+        self.assertIn(
+            'should have a DMARC TXT record with "v=DMARC1; p=reject;"',
+            str(reasons[2]),
+        )
+
+        # Auto-detects 'no-mail' with MX that isn't at the apex
+        zone = _make_zone()
+        mx = _add_record(
+            zone,
+            'sub',
+            {
+                'ttl': 300,
+                'type': 'MX',
+                'values': [{'preference': 10, 'exchange': 'mail.'}],
+            },
+        )
+        zone.add_record(mx)
+        reasons = v.validate(zone)
+        # Should detect no-mail because no apex MX, but some MX exists
+        self.assertIn('missing a Null MX record', str(reasons[0]))
+
+        # No-op with TXT records that aren't SPF or DMARC
+        zone = _make_zone()
+        txt = _add_record(
+            zone, '', {'ttl': 300, 'type': 'TXT', 'value': 'not spf'}
+        )
+        zone.add_record(txt)
+        dmarc_txt = _add_record(
+            zone, '_dmarc', {'ttl': 300, 'type': 'TXT', 'value': 'not dmarc'}
+        )
+        zone.add_record(dmarc_txt)
+        reasons = v.validate(zone)
+        self.assertEqual([], reasons)
 
     def test_builtin_registration(self):
         ids = [v.id for v in Zone.validators.available_validators()]

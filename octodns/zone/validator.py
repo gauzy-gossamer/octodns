@@ -132,7 +132,10 @@ class MailZoneValidator(ZoneValidator):
     Comprehensive best-practice validator for mail records (MX, SPF, DMARC).
 
     Can operate in two modes: 'mail' and 'no-mail'. In 'auto' mode (default), it
-    detects the mode based on the presence of non-null MX records at the apex.
+    detects the mode based on the presence of mail-related records (MX anywhere
+    in the zone, SPF at the apex, or DMARC at _dmarc). If no mail-related
+    records are found, it is a no-op. If any are found, it detects the mode
+    based on the presence of non-null MX records at the apex.
 
     'mail' mode enforces:
     - Multiple MX records for redundancy (at apex and throughout the zone).
@@ -339,6 +342,41 @@ class MailZoneValidator(ZoneValidator):
     def validate(self, zone):
         mode = self.mode
         if mode == 'auto':
+            # Check for signs of mail configuration
+            has_mx = any(r._type == 'MX' for r in zone.records)
+
+            spf_sign = False
+            apex_txts = zone.get('', type='TXT')
+            if apex_txts:
+                apex_txt = next(iter(apex_txts))
+                for value in apex_txt.values:
+                    if (
+                        str(value)
+                        .replace('\\', '')
+                        .lower()
+                        .startswith('v=spf1')
+                    ):
+                        spf_sign = True
+                        break
+
+            dmarc_sign = False
+            dmarc_txts = zone.get('_dmarc', type='TXT')
+            if dmarc_txts:
+                dmarc_txt = next(iter(dmarc_txts))
+                for value in dmarc_txt.values:
+                    if (
+                        str(value)
+                        .replace('\\', '')
+                        .lower()
+                        .startswith('v=dmarc1')
+                    ):
+                        dmarc_sign = True
+                        break
+
+            if not (has_mx or spf_sign or dmarc_sign):
+                # No signs of mail, so we're done
+                return []
+
             apex_mxs = zone.get('', type='MX')
             if apex_mxs:
                 apex_mx = next(iter(apex_mxs))
