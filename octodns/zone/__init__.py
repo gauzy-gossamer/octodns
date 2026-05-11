@@ -338,6 +338,22 @@ class Zone(object):
             return set(records)
         return {r for r in records if r._type == type}
 
+    def get_type(self, name, type):
+        '''
+        Return record of the specified type at the given name.
+
+        :param name: Record name relative to the zone (``''`` for the apex).
+        :type name: str
+        :param type: DNS record type (e.g. ``'MX'``)
+        :type type: str
+        :return: Matching records; None when no matching record is found.
+        :rtype: octodns.record.base.Record or None
+        '''
+        try:
+            return next(iter(self.get(name, type=type)))
+        except StopIteration:
+            return None
+
     def hostname_from_fqdn(self, fqdn):
         '''
         Extract the hostname portion from a fully qualified domain name.

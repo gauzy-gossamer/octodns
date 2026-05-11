@@ -87,6 +87,9 @@ class ValidationReason:
             msg += f" ({', '.join(sorted(contexts))})"
         return msg
 
+    def __repr__(self):
+        return self.reason
+
 
 class ZoneValidator:
     '''
