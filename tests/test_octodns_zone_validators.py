@@ -3,11 +3,11 @@ from unittest import TestCase
 from octodns.record import Record
 from octodns.zone import Zone
 from octodns.zone.validator import (
-    MailZoneValidator,
     ValidationReason,
     ZoneValidator,
     ZoneValidatorRegistry,
 )
+from octodns.zone.validator.mail import MailZoneValidator
 
 
 def _make_zone(name='unit.tests.'):
