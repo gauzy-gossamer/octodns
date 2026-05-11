@@ -32,7 +32,7 @@ class MailZoneValidator(ZoneValidator):
 
     def __init__(self, id, mode='auto', sets=None):
         super().__init__(id, sets=sets)
-        self.log = getLogger('MailZoneValidator[{id}]')
+        self.log = getLogger(f'MailZoneValidator[{id}]')
         if mode not in ('auto', 'mail', 'no-mail'):
             raise ValueError(f'Unknown mode "{mode}"')
         self.mode = mode
