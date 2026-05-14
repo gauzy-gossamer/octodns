@@ -6,9 +6,11 @@ import re
 from collections import defaultdict
 from logging import getLogger
 
-from .deprecation import deprecated
-from .idna import idna_decode, idna_encode
-from .record import Create, Delete
+from ..deprecation import deprecated
+from ..idna import idna_decode, idna_encode
+from ..record import Create, Delete
+from .exception import ValidationError
+from .validator import ZoneValidatorRegistry
 
 
 class SubzoneRecordException(Exception):
@@ -143,6 +145,7 @@ class Zone(object):
     '''
 
     log = getLogger('Zone')
+    validators = ZoneValidatorRegistry()
 
     REFERENCES = (
         'https://datatracker.ietf.org/doc/html/rfc1034',
@@ -158,6 +161,7 @@ class Zone(object):
         update_pcent_threshold=None,
         delete_pcent_threshold=None,
         ignore_subzone_adds=False,
+        context=None,
     ):
         '''
         Initialize a DNS zone.
@@ -183,6 +187,9 @@ class Zone(object):
                                     ``lenient=True`` keep their existing
                                     warn-and-add behavior.
         :type ignore_subzone_adds: bool
+        :param context: The context in which the zone was defined (e.g. the
+                        filename and line number it was found at).
+        :type context: str or None
 
         :raises InvalidNameError: If the zone name is invalid (missing trailing
                                   dot, contains double dots, or has whitespace).
@@ -224,6 +231,7 @@ class Zone(object):
         self.update_pcent_threshold = update_pcent_threshold
         self.delete_pcent_threshold = delete_pcent_threshold
         self.ignore_subzone_adds = ignore_subzone_adds
+        self.context = context
 
         # Copy-on-write semantics support, when `not None` this property will
         # point to a location with records for this `Zone`. Once `hydrated`
@@ -261,6 +269,90 @@ class Zone(object):
         if self._origin:
             return self._origin.root_ns
         return self._root_ns
+
+    @classmethod
+    def register_zone_validator(cls, validator):
+        cls.validators.register(validator)
+
+    @classmethod
+    def enable_zone_validators(cls, sets):
+        cls.validators.enable_sets(sets)
+
+    @classmethod
+    def enable_zone_validator(cls, id):
+        cls.validators.enable(id)
+
+    @classmethod
+    def disable_zone_validator(cls, validator_id):
+        return cls.validators.disable(validator_id)
+
+    @classmethod
+    def registered_zone_validators(cls):
+        return cls.validators.registered()
+
+    @classmethod
+    def available_zone_validators(cls):
+        return cls.validators.available_validators()
+
+    def validate(self, lenient=False):
+        reasons = self.validators.process_zone(self)
+        if not reasons:
+            return
+
+        reasons_to_raise = []
+        reasons_to_warn = []
+        for reason in reasons:
+            if lenient or reason.lenient:
+                reasons_to_warn.append(reason)
+            else:
+                reasons_to_raise.append(reason)
+
+        if reasons_to_warn:
+            self.log.warning(
+                ValidationError.build_message(
+                    self.decoded_name, reasons_to_warn, context=self.context
+                )
+            )
+
+        if reasons_to_raise:
+            raise ValidationError(
+                self.decoded_name, reasons_to_raise, context=self.context
+            )
+
+    def get(self, name, type=None):
+        '''
+        Return records at the given name, optionally filtered by type.
+
+        :param name: Record name relative to the zone (``''`` for the apex).
+        :type name: str
+        :param type: DNS record type to filter on (e.g. ``'MX'``), or ``None``
+                     to return all types at that name.
+        :type type: str or None
+        :return: Set of matching records; empty set when none are found.
+        :rtype: set[octodns.record.base.Record]
+        '''
+        if self._origin:
+            return self._origin.get(name, type=type)
+        records = self._records.get(name, ())
+        if type is None:
+            return set(records)
+        return {r for r in records if r._type == type}
+
+    def get_type(self, name, type):
+        '''
+        Return record of the specified type at the given name.
+
+        :param name: Record name relative to the zone (``''`` for the apex).
+        :type name: str
+        :param type: DNS record type (e.g. ``'MX'``)
+        :type type: str
+        :return: Matching records; None when no matching record is found.
+        :rtype: octodns.record.base.Record or None
+        '''
+        try:
+            return next(iter(self.get(name, type=type)))
+        except StopIteration:
+            return None
 
     def hostname_from_fqdn(self, fqdn):
         '''
@@ -697,6 +789,8 @@ class Zone(object):
             self.sub_zones,
             self.update_pcent_threshold,
             self.delete_pcent_threshold,
+            ignore_subzone_adds=self.ignore_subzone_adds,
+            context=self.context,
         )
         copy._origin = self
         return copy

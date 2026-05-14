@@ -280,9 +280,32 @@ def _manager_def():
             'auto_arpa': {'oneOf': [{'type': 'boolean'}, _AUTO_ARPA_KWARGS]},
             'processors': _STRING_ARRAY,
             'post_processors': _STRING_ARRAY,
-            'enabled': _STRING_ARRAY,
-            'validators': _TYPE_TO_NAMES_MAP,
-            'disable_validators': _TYPE_TO_NAMES_MAP,
+            'validators': {
+                'type': 'object',
+                'additionalProperties': False,
+                'properties': {
+                    'enabled': _STRING_ARRAY,
+                    'record': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            'validators': _TYPE_TO_NAMES_MAP,
+                            'disable_validators': _TYPE_TO_NAMES_MAP,
+                        },
+                    },
+                    'zone': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            'validators': _STRING_ARRAY,
+                            'disable_validators': _STRING_ARRAY,
+                        },
+                    },
+                    # Deprecated aliases kept for backwards compatibility
+                    'validators': _TYPE_TO_NAMES_MAP,
+                    'disable_validators': _TYPE_TO_NAMES_MAP,
+                },
+            },
             'plan_outputs': {
                 'type': 'object',
                 'additionalProperties': {

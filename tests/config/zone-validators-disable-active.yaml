@@ -2,6 +2,9 @@ manager:
   validators:
     enabled:
       - legacy
-      - test-set
+      - best-practice
+    zone:
+      disable_validators:
+        - mail
 providers: {}
 zones: {}

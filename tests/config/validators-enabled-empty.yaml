@@ -1,4 +1,5 @@
 manager:
-  enabled: []
+  validators:
+    enabled: []
 providers: {}
 zones: {}

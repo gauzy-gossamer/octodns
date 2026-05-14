@@ -1,4 +1,5 @@
 manager:
-  enabled: legacy
+  validators:
+    enabled: legacy
 providers: {}
 zones: {}

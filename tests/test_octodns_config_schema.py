@@ -71,9 +71,17 @@ class TestConfigSchema(TestCase):
                     'auto_arpa': True,
                     'processors': ['p1'],
                     'post_processors': ['p2'],
-                    'enabled': ['legacy'],
-                    'validators': {'A': ['v1'], '*': ['v2']},
-                    'disable_validators': {'AAAA': ['bad-v']},
+                    'validators': {
+                        'enabled': ['legacy'],
+                        'record': {
+                            'validators': {'A': ['v1'], '*': ['v2']},
+                            'disable_validators': {'AAAA': ['bad-v']},
+                        },
+                        'zone': {
+                            'validators': ['my-zone-v'],
+                            'disable_validators': ['other-zone-v'],
+                        },
+                    },
                     'plan_outputs': {
                         'logs': {
                             'class': 'octodns.provider.plan.PlanLogger',
@@ -106,6 +114,27 @@ class TestConfigSchema(TestCase):
     def test_auto_arpa_dict_unknown_key_rejected(self):
         self._invalid(
             self._base(manager={'auto_arpa': {'unknown_kwarg': True}})
+        )
+
+    def test_validators_unknown_key_rejected(self):
+        self._invalid(
+            self._base(manager={'validators': {'typo_enabled': ['legacy']}})
+        )
+
+    def test_validators_record_unknown_key_rejected(self):
+        self._invalid(
+            self._base(
+                manager={
+                    'validators': {'record': {'typo_validators': {'*': ['v']}}}
+                }
+            )
+        )
+
+    def test_validators_zone_unknown_key_rejected(self):
+        self._invalid(
+            self._base(
+                manager={'validators': {'zone': {'typo_validators': ['my-v']}}}
+            )
         )
 
     def test_plan_outputs_logger_bad_level_rejected(self):
