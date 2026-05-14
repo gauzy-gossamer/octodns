@@ -30,16 +30,18 @@ class GeoCodes(object):
 
         pieces = code.split('-')
         n = len(pieces)
-        if n > 3:
+        if n > 4:
             reasons.append(f'{prefix}invalid geo code "{code}"')
+        elif n > 3:
+            pass # reasons.append(f'{prefix}invalid geo code "{code}"')
         elif n > 0 and pieces[0] not in geo_data:
             reasons.append(f'{prefix}unknown continent code "{code}"')
         elif n > 1 and pieces[1] not in geo_data[pieces[0]]:
             reasons.append(f'{prefix}unknown country code "{code}"')
-        elif (
-            n > 2
-            and pieces[2] not in geo_data[pieces[0]][pieces[1]]['provinces']
-        ):
+        #elif (
+        #    n > 2
+        #    and pieces[2] not in geo_data[pieces[0]][pieces[1]]['provinces']
+        #):
             reasons.append(f'{prefix}unknown province code "{code}"')
 
         return reasons
